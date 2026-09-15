@@ -10,6 +10,10 @@ permissions:
   contents: read
 
 jobs:
+
+  # ============================================================
+  # 1. SAST - Semgrep
+  # ============================================================
   semgrep:
     name: Semgrep SAST
     runs-on: ubuntu-latest
@@ -23,7 +27,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
+      - name: Install application dependencies
         run: pip install -r requirements.txt
 
       - name: Install Semgrep
@@ -35,6 +39,7 @@ jobs:
             --config=p/python \
             --sarif \
             --output=semgrep.sarif \
+            --error \
             .
 
       - name: Upload Semgrep report
@@ -44,6 +49,10 @@ jobs:
           name: semgrep-sarif
           path: semgrep.sarif
 
+
+  # ============================================================
+  # 2. SCA - Trivy Dependency Scan
+  # ============================================================
   trivy:
     name: Trivy Dependency Scan
     runs-on: ubuntu-latest
@@ -60,6 +69,7 @@ jobs:
           format: json
           output: trivy-report.json
           severity: CRITICAL,HIGH
+          exit-code: "1"
 
       - name: Upload Trivy report
         if: always()
@@ -68,6 +78,10 @@ jobs:
           name: trivy-report
           path: trivy-report.json
 
+
+  # ============================================================
+  # 3. Secrets Detection - Gitleaks
+  # ============================================================
   gitleaks:
     name: Gitleaks Secrets Scan
     runs-on: ubuntu-latest
@@ -83,6 +97,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+
+  # ============================================================
+  # 4. DAST - OWASP ZAP
+  # ============================================================
   zap:
     name: OWASP ZAP DAST
     runs-on: ubuntu-latest
@@ -96,7 +114,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
+      - name: Install application dependencies
         run: pip install -r requirements.txt
 
       - name: Start ResponseOne application
@@ -104,8 +122,9 @@ jobs:
           python app/main.py > app.log 2>&1 &
           sleep 5
 
-      - name: Check application
-        run: curl --fail http://127.0.0.1:5000/health
+      - name: Check application health
+        run: |
+          curl --fail http://127.0.0.1:5000/health
 
       - name: Run OWASP ZAP baseline scan
         uses: zaproxy/action-baseline@v0.15.0
