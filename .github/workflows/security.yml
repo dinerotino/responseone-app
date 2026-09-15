@@ -11,14 +11,16 @@ permissions:
 
 jobs:
 
-  # ============================================================
-  # 1. SAST - Semgrep
-  # ============================================================
+  # ==========================================================
+  # Semgrep - SAST
+  # ==========================================================
+
   semgrep:
     name: Semgrep SAST
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -28,36 +30,39 @@ jobs:
           python-version: "3.12"
 
       - name: Install application dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
 
       - name: Install Semgrep
-        run: pip install semgrep
+        run: |
+          pip install semgrep
 
       - name: Run Semgrep
         run: |
           semgrep scan \
             --config=p/python \
-            --sarif \
-            --output=semgrep.sarif \
-            --error \
+            --json \
+            --output=semgrep.json \
             .
 
       - name: Upload Semgrep report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: semgrep-sarif
-          path: semgrep.sarif
+          name: semgrep-json
+          path: semgrep.json
 
 
-  # ============================================================
-  # 2. SCA - Trivy Dependency Scan
-  # ============================================================
+  # ==========================================================
+  # Trivy - Dependency / Filesystem Scan
+  # ==========================================================
+
   trivy:
     name: Trivy Dependency Scan
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -79,14 +84,16 @@ jobs:
           path: trivy-report.json
 
 
-  # ============================================================
-  # 3. Secrets Detection - Gitleaks
-  # ============================================================
+  # ==========================================================
+  # Gitleaks - Secrets Detection
+  # ==========================================================
+
   gitleaks:
     name: Gitleaks Secrets Scan
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -98,14 +105,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 
-  # ============================================================
-  # 4. DAST - OWASP ZAP
-  # ============================================================
+  # ==========================================================
+  # OWASP ZAP - DAST
+  # ==========================================================
+
   zap:
     name: OWASP ZAP DAST
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -115,7 +124,8 @@ jobs:
           python-version: "3.12"
 
       - name: Install application dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
 
       - name: Start ResponseOne application
         run: |
@@ -141,3 +151,41 @@ jobs:
             report_html.html
             report_json.json
             report_md.md
+
+
+  # ==========================================================
+  # ResponseOne - Semgrep Ingestion
+  # ==========================================================
+
+  ingest-semgrep:
+    name: Ingest Semgrep Findings
+    runs-on: ubuntu-latest
+
+    needs: semgrep
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install application dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Download Semgrep report
+        uses: actions/download-artifact@v4
+        with:
+          name: semgrep-json
+          path: reports
+
+      - name: Send Semgrep findings to ResponseOne
+        env:
+          RESPONSEONE_API_URL: ${{ secrets.RESPONSEONE_API_URL }}
+          RESPONSEONE_INGEST_TOKEN: ${{ secrets.RESPONSEONE_INGEST_TOKEN }}
+        run: |
+          python scripts/ingest_semgrep.py reports/semgrep.json

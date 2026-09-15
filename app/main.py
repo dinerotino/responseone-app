@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from datetime import datetime, timezone
 import hashlib
+import hmac
 import os
 
 import psycopg2
@@ -28,6 +29,23 @@ def get_db_connection():
         database=os.getenv("DB_NAME", "responseone"),
         user=os.getenv("DB_USER", "postgres"),
         password=os.getenv("DB_PASSWORD", "")
+    )
+
+
+# ============================================================
+# Ingestion authentication
+# ============================================================
+
+def is_ingestion_authenticated():
+    configured_token = os.getenv("RESPONSEONE_INGEST_TOKEN", "")
+    provided_token = request.headers.get("X-ResponseOne-Token", "")
+
+    if not configured_token:
+        return False
+
+    return hmac.compare_digest(
+        provided_token,
+        configured_token
     )
 
 
@@ -74,6 +92,15 @@ def get_user(user_id):
 
 @app.route("/api/findings", methods=["POST"])
 def ingest_finding():
+
+    # --------------------------------------------------------
+    # Authenticate ingestion request
+    # --------------------------------------------------------
+
+    if not is_ingestion_authenticated():
+        return jsonify({
+            "error": "Unauthorized"
+        }), 401
 
     data = request.get_json(silent=True)
 
